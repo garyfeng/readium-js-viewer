@@ -42,7 +42,7 @@
 
 name: "readium-js-viewer"
 
-version: "0.22.1"
+version: "0.24.0"
 
 engines:
     node: ">=0.12"
@@ -129,11 +129,11 @@ devDependencies:
     # "libxmljs" node-gyp python < v3 :(
     #"jquery-xpath": 'latest'
 
-    "MathJax-grunt-concatenator": 'pkra/MathJax-single-file'
+    "mathjax-single-file": 'danielweck/MathJax-single-file'
 
     "bootstrap": '3.x'
 
-    "bootstrap-accessibility-plugin": 'latest'
+    "bootstrap-accessibility-plugin": 'paypal/bootstrap-accessibility-plugin'
 
     "hammerjs": 'latest'
 
@@ -168,7 +168,7 @@ devDependencies:
 
     "wd": 'latest'
 
-    "phantomjs": 'latest'
+    "phantomjs-prebuilt": 'latest'
 
     #"grunt": 'latest'
     "grunt-selenium-webdriver": 'latest'

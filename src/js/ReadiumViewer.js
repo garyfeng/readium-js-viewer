@@ -1,5 +1,4 @@
-define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'], function($, EpubLibrary, EpubReader, Helpers){
-
+define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers', 'URIjs'], function($, EpubLibrary, EpubReader, Helpers, URI){
 
     var _initialLoad = true; // replaces pushState() with replaceState() at first load 
     var initialLoad = function(){
@@ -32,7 +31,7 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
         {
             $(document.body).addClass("keyboard");
         });
-    }
+    };
 
     var pushState = $.noop;
     var replaceState = $.noop;
@@ -78,11 +77,8 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
         };
     }
 
-
-    var tooltipSelector = 'nav *[title]';
-
     var libraryView = function(libraryURL, importEPUB){
-        $(tooltipSelector).tooltip('destroy');
+        $(EpubReader.tooltipSelector()).tooltip('destroy');
         
         EpubReader.unloadUI();
         EpubLibrary.unloadUI();
@@ -93,26 +89,16 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
             
             EpubLibrary.loadUI({epubs: undefined, importEPUB: importEPUB});
         }
-    }
+    };
 
     var readerView = function(data){
-        $(tooltipSelector).tooltip('destroy');
+        $(EpubReader.tooltipSelector()).tooltip('destroy');
         
         EpubLibrary.unloadUI();
         EpubReader.unloadUI();
         
         EpubReader.loadUI(data);
-    }
-
-    var URLPATH =
-    window.location ? (
-        window.location.protocol
-        + "//"
-        + window.location.hostname
-        + (window.location.port ? (':' + window.location.port) : '')
-        + window.location.pathname
-    ) : 'index.html'
-    ;
+    };
 
     $(window).on('readepub', function(e, eventPayload){
         
@@ -125,13 +111,22 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
             epub = ebookURL_filepath;
         }
         
+        ebookURL_filepath = EpubReader.ensureUrlIsRelativeToApp(ebookURL_filepath);
+        
+        var epubs = eventPayload.epubs;
+        epubs = EpubReader.ensureUrlIsRelativeToApp(epubs);
+        
+        var urlState = Helpers.buildUrlQueryParameters(undefined, {
+            epub: ebookURL_filepath,
+            epubs: (epubs ? epubs : undefined),
+            embedded: (eventPayload.embedded ? eventPayload.embedded : undefined)
+        });
+        
         var func = _initialLoad ? replaceState : pushState;
         func(
-            {epub: epub, epubs: eventPayload.epubs},
+            {epub: epub, epubs: epubs},
             "Readium Viewer",
-            URLPATH + '?epub=' + encodeURIComponent(ebookURL_filepath)
-            + (eventPayload.epubs ? ('&epubs=' + encodeURIComponent(eventPayload.epubs)) : '')
-            + (eventPayload.embedded ? ('&embedded=' + eventPayload.embedded) : '')
+            urlState
         );
     
         _initialLoad = false;
@@ -140,7 +135,6 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
     });
 
     $(window).on('loadlibrary', function(e, eventPayload){
-
         var libraryURL = undefined;
         var importEPUB = undefined;
         if (typeof eventPayload === "string") { 
@@ -149,14 +143,20 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
             importEPUB = eventPayload;
         }
         
+        libraryURL = EpubReader.ensureUrlIsRelativeToApp(libraryURL);
+        
+        var urlState = Helpers.buildUrlQueryParameters(undefined, {
+            epubs: (libraryURL ? libraryURL : undefined),
+            epub: " ",
+            goto: " "
+        });
         
         var func = _initialLoad ? replaceState : pushState;
         func(
             {epubs: libraryURL},
             "Readium Library",
-            libraryURL ?
-            URLPATH + '?epubs=' + encodeURIComponent(libraryURL)
-            : URLPATH);
+            urlState
+        );
         
         _initialLoad = false;
 
@@ -164,11 +164,23 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
     });
 
     $(document.body).tooltip({
-        selector : tooltipSelector,
-        placement: 'auto',
+        selector : EpubReader.tooltipSelector(),
+        placement: function(tip, element){
+          var placeValue = 'auto';
+          if (element.id == 'left-page-btn'){
+            placeValue = 'right';
+          } else if (element.id == 'right-page-btn') {
+            placeValue = 'left'
+          }
+          return placeValue;
+        },
         container: 'body' // do this to prevent weird navbar re-sizing issue when the tooltip is inserted
     }).on('show.bs.tooltip', function(e){
-        $(tooltipSelector).not(e.target).tooltip('destroy');
+        $(EpubReader.tooltipSelector()).not(e.target).tooltip('destroy');
+        var target = e.target; 
+        setTimeout(function(){
+            $(target).tooltip('destroy');
+        }, 8000);
     });
     
     
@@ -199,21 +211,28 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
             fileDragNDropHTMLArea.removeClass("fileDragHover");
             
             var files = ev.target.files || ev.originalEvent.dataTransfer.files;
+
             if (files.length) {
-                var file = files[0];
-                console.log("File drag-n-drop:");
-                console.log(file.name);
-                console.log(file.type);
-                console.log(file.size);
-                
-                if (file.type == "application/epub+zip" || (/\.epub$/.test(file.name))) {
+
+                if (isChromeExtensionPackagedApp) {
+
+                    var filesArray = []; // files is a FileList, we prefer a more "primitive" array type
+                    for (var i=0; i<files.length; i++) {
+                        filesArray.push(files[i]); // files.item(i) 
+                    }
+                    var arr = [];
+                    arr.push(filesArray); // because jQuery triggerHandler() optionally takes a parameter Array!
+                    $(window).triggerHandler('loadlibrary', arr);
+                } else {
+
+                    var file = files[0];
+                    console.log("File drag-n-drop:");
+                    console.log(file.name);
+                    console.log(file.type);
+                    console.log(file.size);
                     
-                    if (isChromeExtensionPackagedApp) {
-                        
-                        $(window).triggerHandler('loadlibrary', file);
-                                
-                    } else {
-                        
+                    if (file.type == "application/epub+zip" || (/\.epub$/.test(file.name))) {
+                    
                         var urlParams = Helpers.getURLQueryParams();
                         //var ebookURL = urlParams['epub'];
                         var libraryURL = urlParams['epubs'];
@@ -222,17 +241,18 @@ define(['jquery', './EpubLibrary', './EpubReader', 'readium_shared_js/helpers'],
                         var eventPayload = {embedded: embedded, epub: file, epubs: libraryURL};
                         $(window).triggerHandler('readepub', eventPayload);
                     }
-                    
-                    // var reader = new FileReader();
-                    // reader.onload = function(e) {
-                        
-                    //     console.log(e.target.result);
-                        
-                    //     var ebookURL = e.target.result;
-                    //     $(window).triggerHandler('readepub', ...);
-                    // }
-                    // reader.readAsDataURL(file);
                 }
+
+                // var reader = new FileReader();
+                // reader.onload = function(e) {
+                    
+                //     console.log(e.target.result);
+                    
+                //     var ebookURL = e.target.result;
+                //     $(window).triggerHandler('readepub', ...);
+                // }
+                // reader.readAsDataURL(file);
+
             }
         });
     }
